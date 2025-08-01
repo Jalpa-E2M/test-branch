@@ -56,30 +56,85 @@ function App() {
     }
   };
 
+  // const handleGenerateReport = async () => {
+  //   setLoading(true);
+  //   try {
+  //     const response = await axios.post('http://localhost:3000/api/generate-report', {
+  //       pages: auditResults.pages,
+  //       images: auditResults.images
+  //     });
+
+  //     const { filename } = response.data;
+  //     const fileUrl = `http://localhost:3000/reports/${filename}`;
+
+  //     // Trigger browser download
+  //     const link = document.createElement('a');
+  //     link.href = fileUrl;
+  //     link.download = filename; // Hint to browser for filename
+  //     document.body.appendChild(link);
+  //     link.click();
+  //     document.body.removeChild(link);
+
+  //     // ✅ The browser will download to user's Downloads folder by default
+
+  //   } catch (error) {
+  //     console.error('Error generating report:', error);
+  //     alert('Something went wrong while generating the report.');
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
   const handleGenerateReport = async () => {
     setLoading(true);
+    setError('');
+    
     try {
-      const response = await axios.post('http://localhost:3000/api/generate-report', {
+      // ✅ Use the correct server port (5000, not 3000)
+      const response = await axios.post('http://localhost:5000/api/generate-report', {
         pages: auditResults.pages,
         images: auditResults.images
       });
 
-      const { filename } = response.data;
-      const fileUrl = `http://localhost:3000/reports/${filename}`;
+      const { filename, downloadUrl } = response.data;
+      
+      // ✅ Use the correct server URL for file download
+      const fileUrl = `http://localhost:5000${downloadUrl}`;
 
-      // Trigger browser download
+      // Check if file exists before attempting download
+      const fileCheck = await fetch(fileUrl, { method: 'HEAD' });
+      if (!fileCheck.ok) {
+        throw new Error('Generated file not found on server');
+      }
+
+      // Create and trigger download
       const link = document.createElement('a');
       link.href = fileUrl;
-      link.download = filename; // Hint to browser for filename
+      link.download = filename;
+      link.style.display = 'none';
+      
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(link);
+      }, 100);
 
-      // ✅ The browser will download to user's Downloads folder by default
-
+      console.log(`✅ Report downloaded: ${filename}`);
+      
     } catch (error) {
-      console.error('Error generating report:', error);
-      alert('Something went wrong while generating the report.');
+      console.error('❌ Error generating report:', error);
+      
+      if (error.response?.status === 404) {
+        setError('Report generation endpoint not found. Please check your server.');
+      } else if (error.response?.status === 500) {
+        setError('Server error while generating report. Please try again.');
+      } else if (error.message.includes('file not found')) {
+        setError('Report was generated but file could not be accessed for download.');
+      } else {
+        setError('Failed to generate and download report. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

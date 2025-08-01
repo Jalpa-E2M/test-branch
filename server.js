@@ -22,6 +22,10 @@ if (fs.existsSync(buildPath)) {
   app.use(express.static(buildPath));
 }
 
+// ✅ FIXED: Move this BEFORE the catch-all route
+// Serve static files from reports directory
+app.use('/reports', express.static(path.join(__dirname, 'reports')));
+
 // Import functions from index.js
 async function getSitemapUrls(sitemapUrl) {
   const parser = new xml2js.Parser();
@@ -246,6 +250,7 @@ app.post('/api/generate-report', async (req, res) => {
     
     const workbook = new ExcelJS.Workbook();
     
+    // Pages Sheet
     const pagesSheet = workbook.addWorksheet('Pages SEO Data');
     pagesSheet.columns = [
       { header: 'Page URL', key: 'url', width: 50 },
@@ -261,6 +266,7 @@ app.post('/api/generate-report', async (req, res) => {
       { header: 'Notes / Recommendations', key: 'notes', width: 50 }
     ];
     
+    // Images Sheet
     const imagesSheet = workbook.addWorksheet('Images Analysis');
     imagesSheet.columns = [
       { header: 'Page URL', key: 'pageUrl', width: 50 },
@@ -271,25 +277,40 @@ app.post('/api/generate-report', async (req, res) => {
       { header: 'Suggested Alt Text', key: 'suggestedAlt', width: 50 }
     ];
 
+    // Add data to sheets
     pages.forEach(page => pagesSheet.addRow(page));
     images.forEach(img => imagesSheet.addRow(img));
     
+    // Ensure reports directory exists
     const reportsDir = path.join(__dirname, 'reports');
     if (!fs.existsSync(reportsDir)) {
-      fs.mkdirSync(reportsDir);
+      fs.mkdirSync(reportsDir, { recursive: true });
     }
 
+    // Generate filename and filepath
     const filename = `seo-report-${Date.now()}.xlsx`;
     const filepath = path.join(reportsDir, filename);
 
+    // Write file to server
     await workbook.xlsx.writeFile(filepath);
     
-    res.json({ filename, filepath });
+    console.log(`✅ Report generated successfully: ${filepath}`);
+    
+    // Return both filename and full URL for download
+    res.json({ 
+      filename, 
+      filepath,
+      downloadUrl: `/reports/${filename}`,
+      message: 'Report generated successfully'
+    });
+    
   } catch (error) {
+    console.error('❌ Error generating report:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
+// ✅ Catch-all route MUST be last
 // Serve React app in production, or show development message
 app.get('*', (req, res) => {
   const buildIndexPath = path.join(__dirname, 'build', 'index.html');
@@ -305,7 +326,9 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📁 Reports will be served from: /reports`);
 });
 
-app.use('/reports', express.static(path.join(__dirname, 'reports')));
+// ❌ REMOVED: This was after the catch-all route, so it never got reached
+// app.use('/reports', express.static(path.join(__dirname, 'reports')));
