@@ -5,7 +5,7 @@ const openai = new OpenAI({
   apiKey: config.openAiApiKey
 });
 
-module.exports = async function suggestSEO(type, content) {
+module.exports = async function suggestSEO(type, content) { 
 
   if (type === 'alt') {
     // Generate alt text based on image context
