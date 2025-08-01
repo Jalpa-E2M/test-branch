@@ -1,0 +1,16 @@
+node:internal/errors:496
+[0]     ErrorCaptureStackTrace(err);
+[0]     ^
+[0] 
+[0] Error [ERR_HTTP_HEADERS_SENT]: Cannot set headers after they are sent to the client
+[0]     at new NodeError (node:internal/errors:405:5)
+[0]     at ServerResponse.setHeader (node:_http_outgoing:648:11)
+[0]     at ServerResponse.header (/Users/prashantardeshana/Downloads/seo-audit-tool 2/node_modules/express/lib/response.js:794:10)
+[0]     at ServerResponse.json (/Users/prashantardeshana/Downloads/seo-audit-tool 2/node_modules/express/lib/response.js:275:10)
+[0]     at /Users/prashantardeshana/Downloads/seo-audit-tool 2/server.js:242:21
+[0]     at process.processTicksAndRejections (node:internal/process/task_queues:95:5) {
+[0]   code: 'ERR_HTTP_HEADERS_SENT'
+[0] }
+[0] 
+[0] Node.js v18.17.0
+[0] [nodemon] app crashed - waiting for file changes before starting...
