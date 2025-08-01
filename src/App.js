@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Search, Download, AlertCircle, Globe, Image, FileText } from 'lucide-react';
+import LogBox from './LogBox';
 
 function App() {
   const [sitemapUrl, setSitemapUrl] = useState('');
@@ -44,17 +45,17 @@ function App() {
     }
   };
 
-  const handleDownloadReport = async () => {
-    if (!auditResults) return;
+  // const handleDownloadReport = async () => {
+  //   if (!auditResults) return;
     
-    try {
-      await axios.post('/api/generate-report', auditResults);
-      // In a real implementation, you'd handle file download here
-      alert('Report generated successfully!');
-    } catch (err) {
-      setError('Failed to generate report');
-    }
-  };
+  //   try {
+  //     await axios.post('/api/generate-report', auditResults);
+  //     // In a real implementation, you'd handle file download here
+  //     alert('Report generated successfully!');
+  //   } catch (err) {
+  //     setError('Failed to generate report');
+  //   }
+  // };
 
   // const handleGenerateReport = async () => {
   //   setLoading(true);
@@ -292,6 +293,12 @@ function App() {
             <p className="text-sm text-gray-600">
               {currentUrl ? `Analyzing: ${currentUrl}` : 'Starting audit...'}
             </p>
+          </div>
+        )}
+
+        {loading && (
+          <div className="mb-8">
+            <LogBox />
           </div>
         )}
 

@@ -16,6 +16,9 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+const OpenAI = require('openai');
+const openai = new OpenAI({ apiKey: config.openAiApiKey }); 
+
 // Serve static files from build directory if it exists
 const buildPath = path.join(__dirname, 'build');
 if (fs.existsSync(buildPath)) {
@@ -77,6 +80,28 @@ function extractAllMetaTags($) {
   return { ...metaTags, missingMeta: missingMeta.join(', ') };
 }
 
+const clients = [];
+
+function logToClients(message, type = 'info') {
+  const data = `data: ${JSON.stringify({ message, type })}\n\n`;
+  clients.forEach(res => res.write(data));
+  console.log(`[${type.toUpperCase()}] ${message}`);
+}
+
+// Add this once in your server
+app.get('/api/logs', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  clients.push(res);
+
+  req.on('close', () => {
+    clients.splice(clients.indexOf(res), 1);
+  });
+});
+
 async function analyzePage(url) {
   let pageData = {
     url,
@@ -125,6 +150,8 @@ async function analyzePage(url) {
       if (!src) continue;
 
       const fullSrc = src.startsWith('http') ? src : new URL(src, url).href;
+
+      const imageName = src.split('/').pop().split('?')[0] || 'unknown';
       
       let imgInfo = {
         pageUrl: url,
@@ -135,27 +162,52 @@ async function analyzePage(url) {
         altLength: alt ? alt.length : 0,
         imageStatus: 'OK',
         suggestedAlt: '',
-        imageName: src.split('/').pop().split('?')[0] || 'unknown'
+        imageName
       };
+
+      // if (!alt || alt.trim() === '') {
+      //   imagesWithoutAlt++;
+        
+      //   try {
+      //     const contextText = img.parent().text().substring(0, 100);
+      //     const suggestedAlt = await suggestSEO('alt', {
+      //       imageSrc: fullSrc,
+      //       imageName: imageName.split('.')[0],
+      //       context: contextText,
+      //       pageContent: res.data
+      //     });
+      //     imgInfo.suggestedAlt = suggestedAlt;
+      //   } catch {
+      //     const fallback = imageName.split('.')[0].replace(/[-_]/g, ' ');
+      //     imgInfo.suggestedAlt = `Image of ${fallback}`;
+      //   }
+      // }
 
       if (!alt || alt.trim() === '') {
         imagesWithoutAlt++;
-        
+
         try {
-          const imageName = imgInfo.imageName.split('.')[0];
           const contextText = img.parent().text().substring(0, 100);
-          
-          const suggestedAlt = await suggestSEO('alt', {
-            imageSrc: fullSrc,
-            imageName: imageName,
-            context: contextText,
-            pageContent: res.data
+
+          const prompt = `Suggest a very short, descriptive alt text (2–3 words max) for this image:\n\n` +
+                        `Image name: ${imageName.split('.')[0]}\n` +
+                        `Context: ${contextText}`;
+
+          const aiResponse = await openai.chat.completions.create({
+            model: 'gpt-4', // or 'gpt-3.5-turbo'
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.7,
           });
-          
+
+          let suggestedAlt = aiResponse.choices[0].message.content.trim();
+
+          // Truncate to first 3 words just in case
+          suggestedAlt = suggestedAlt.split(' ').slice(0, 3).join(' ');
           imgInfo.suggestedAlt = suggestedAlt;
-        } catch {
-          const imageName = imgInfo.imageName.split('.')[0].replace(/[-_]/g, ' ');
-          imgInfo.suggestedAlt = `Image of ${imageName}`;
+
+        } catch (e) {
+          const fallback = imageName.split('.')[0].replace(/[-_]/g, ' ');
+          imgInfo.suggestedAlt = fallback.split(' ').slice(0, 3).join(' ');
         }
       }
 
@@ -195,9 +247,13 @@ async function analyzePage(url) {
   } catch (err) {
     pageData.status = err.response?.status || 'Error';
     pageData.notes = err.message;
+    imageData = []; // ✅ Prevent undefined imageData
   }
 
-  return { pageData, imageData };
+  // ✅ Filter only images missing alt text
+  const missingAltImages = imageData.filter(img => img.hasAlt === 'No');
+
+  return { pageData, imageData: missingAltImages };
 }
 
 // API Routes
@@ -227,19 +283,23 @@ app.post('/api/audit', async (req, res) => {
     const results = [];
     const allImageData = [];
 
-    console.log(`Starting audit for ${urls.length} URLs...`);
+    // console.log(`Starting audit for ${urls.length} URLs...`);
+    logToClients(`Starting audit for ${urls.length} URLs...`);
 
     for (let i = 0; i < urls.length; i++) {
-      console.log(`Analyzing ${i + 1}/${urls.length}: ${urls[i]}`);
+      // console.log(`Analyzing ${i + 1}/${urls.length}: ${urls[i]}`);
+      logToClients(`Analyzing ${i + 1}/${urls.length}: ${urls[i]}`);
       const { pageData, imageData } = await analyzePage(urls[i]);
       results.push(pageData);
       allImageData.push(...imageData);
     }
 
-    console.log(`Audit completed. Processed ${results.length} pages and ${allImageData.length} images.`);
+    // console.log(`Audit completed. Processed ${results.length} pages and ${allImageData.length} images.`);
+    logToClients(`Audit completed. Processed ${results.length} pages and ${allImageData.length} images.`);
     res.json({ pages: results, images: allImageData });
   } catch (error) {
-    console.error('Audit error:', error);
+    // console.error('Audit error:', error);
+    logToClients(`❌ Audit failed: ${error.message}`, 'error');
     res.status(500).json({ error: error.message });
   }
 });
@@ -294,7 +354,8 @@ app.post('/api/generate-report', async (req, res) => {
     // Write file to server
     await workbook.xlsx.writeFile(filepath);
     
-    console.log(`✅ Report generated successfully: ${filepath}`);
+    // console.log(`✅ Report generated successfully: ${filepath}`);
+    logToClients(`✅ Report generated successfully: ${filepath}`);
     
     // Return both filename and full URL for download
     res.json({ 
@@ -326,8 +387,10 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📁 Reports will be served from: /reports`);
+  // console.log(`🚀 Server running on port ${PORT}`);
+  // console.log(`📁 Reports will be served from: /reports`);
+  logToClients(`🚀 Server running on port ${PORT}`);
+  logToClients(`📁 Reports will be served from: /reports`);
 });
 
 // ❌ REMOVED: This was after the catch-all route, so it never got reached
