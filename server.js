@@ -272,10 +272,43 @@ app.post('/api/analyze', async (req, res) => {
   }
 });
 
+// app.post('/api/audit', async (req, res) => {
+//   try {
+//     const { urls } = req.body;
+    
+//     if (!urls || !Array.isArray(urls)) {
+//       return res.status(400).json({ error: 'URLs array is required' });
+//     }
+
+//     const results = [];
+//     const allImageData = [];
+
+//     // console.log(`Starting audit for ${urls.length} URLs...`);
+//     logToClients(`Starting audit for ${urls.length} URLs...`);
+
+//     for (let i = 0; i < urls.length; i++) {
+//       // console.log(`Analyzing ${i + 1}/${urls.length}: ${urls[i]}`);
+//       logToClients(`Analyzing ${i + 1}/${urls.length}: ${urls[i]}`);
+//       const { pageData, imageData } = await analyzePage(urls[i]);
+//       results.push(pageData);
+//       allImageData.push(...imageData);
+//     }
+
+//     // console.log(`Audit completed. Processed ${results.length} pages and ${allImageData.length} images.`);
+//     logToClients(`Audit completed. Processed ${results.length} pages and ${allImageData.length} images.`);
+//     res.json({ pages: results, images: allImageData });
+//   } catch (error) {
+//     // console.error('Audit error:', error);
+//     logToClients(`❌ Audit failed: ${error.message}`, 'error');
+//     res.status(500).json({ error: error.message });
+//   }
+// });
+
+
 app.post('/api/audit', async (req, res) => {
   try {
     const { urls } = req.body;
-    
+
     if (!urls || !Array.isArray(urls)) {
       return res.status(400).json({ error: 'URLs array is required' });
     }
@@ -283,22 +316,42 @@ app.post('/api/audit', async (req, res) => {
     const results = [];
     const allImageData = [];
 
-    // console.log(`Starting audit for ${urls.length} URLs...`);
+    const concurrencyLimit = 5;
     logToClients(`Starting audit for ${urls.length} URLs...`);
 
-    for (let i = 0; i < urls.length; i++) {
-      // console.log(`Analyzing ${i + 1}/${urls.length}: ${urls[i]}`);
-      logToClients(`Analyzing ${i + 1}/${urls.length}: ${urls[i]}`);
-      const { pageData, imageData } = await analyzePage(urls[i]);
-      results.push(pageData);
-      allImageData.push(...imageData);
+    // Split URLs into chunks
+    for (let i = 0; i < urls.length; i += concurrencyLimit) {
+      const batch = urls.slice(i, i + concurrencyLimit);
+
+      logToClients(`Analyzing batch ${i + 1} to ${i + batch.length}...`);
+
+      // Run all in parallel in this batch
+      const batchResults = await Promise.all(
+        batch.map(async (url, index) => {
+          try {
+            logToClients(`Analyzing ${i + index + 1}/${urls.length}: ${url}`);
+            const { pageData, imageData } = await analyzePage(url);
+            return { pageData, imageData };
+          } catch (err) {
+            return {
+              pageData: { url, status: 'Error', notes: err.message },
+              imageData: []
+            };
+          }
+        })
+      );
+
+      // Accumulate results
+      for (const result of batchResults) {
+        results.push(result.pageData);
+        allImageData.push(...result.imageData);
+      }
     }
 
-    // console.log(`Audit completed. Processed ${results.length} pages and ${allImageData.length} images.`);
-    logToClients(`Audit completed. Processed ${results.length} pages and ${allImageData.length} images.`);
+    logToClients(`✅ Audit completed. Processed ${results.length} pages and ${allImageData.length} images.`);
     res.json({ pages: results, images: allImageData });
+
   } catch (error) {
-    // console.error('Audit error:', error);
     logToClients(`❌ Audit failed: ${error.message}`, 'error');
     res.status(500).json({ error: error.message });
   }

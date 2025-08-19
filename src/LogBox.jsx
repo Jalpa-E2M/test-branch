@@ -31,6 +31,7 @@ export default function LogBox() {
 
   useEffect(() => {
     const eventSource = new EventSource('http://localhost:5000/api/logs');
+    // const eventSource = new EventSource('/api/logs');
 
     // const eventSource = new EventSource('/api/logs');
     eventSource.onmessage = (event) => {
